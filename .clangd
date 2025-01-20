@@ -1,0 +1,24 @@
+CompileFlags:
+ Add: &common_flags
+
+---
+If:
+ PathMatch: .*win32.*\.c$
+CompileFlags:
+ Add: 
+   - "--target=i686-pc-windows-gnu"
+   - "-I/usr/i686-w64-mingw32/include"
+   - "-D_WIN32"
+   - "-DWIN32"
+
+---
+If:
+ PathMatch: .*linux.*\.c$
+CompileFlags:
+ Add:
+   - *common_flags
+   - "-I/usr/include"
+---
+Index:
+  StandardLibrary: false
+

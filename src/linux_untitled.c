@@ -7,8 +7,12 @@
 #include <sys/stat.h>
 #include <time.h>
 #include <sys/time.h>
+#include <alsa/asoundlib.h>
+#include <math.h>
 
 #include "untitled.h"
+#include "untitled_types.h"
+
 
 global_var UntitledUpdateP *untitled_update_game;
 global_var struct stat file_stat;
@@ -56,11 +60,21 @@ copy_file(char *filename1, char *filename2)
 internal void 
 linux_load_gamecode(void)
 {
-    stat("untitled.so", &file_stat);
+    if((stat("/home/vito/git/untitled-unmastered/linux_bin/untitled.so", &file_stat)) < 0) {
+        stat("untitled.so", &file_stat);
+    }
 
-    copy_file("linux_bin/untitled.so", "linux_bin/untitled_temp.so");
 
-    global_gamecode_dll = dlopen("linux_bin/untitled_temp.so", RTLD_NOW);
+    if(!(copy_file("/home/vito/git/untitled-unmastered/linux_bin/untitled.so", 
+                    "/home/vito/git/untitled-unmastered/linux_bin/untitled_temp.so"))) {
+        copy_file("untitled.so", "untitled_temp.so");
+    }
+
+    global_gamecode_dll = dlopen("/home/vito/git/untitled-unmastered/linux_bin/untitled_temp.so", RTLD_NOW);
+
+    if(!global_gamecode_dll) {
+        global_gamecode_dll = dlopen("untitled_temp.so", RTLD_NOW);
+    }
 
     if(global_gamecode_dll) {
         untitled_update_game = 
@@ -93,6 +107,48 @@ void msleep(u32 milliseconds)
   ts_sleep.tv_sec = (milliseconds) / 1000;
   ts_sleep.tv_nsec = 1000*usec;
   nanosleep(&ts_sleep, NULL);
+}
+
+global_var snd_pcm_t* _pcm;
+
+internal void
+alsa_fill_sound_buffer(UntitledSoundBuffer* sound_output, int samples_to_write) {
+
+   int result;
+   while((result = snd_pcm_writei(_pcm, sound_output->sample_out, samples_to_write)) != samples_to_write) {
+      if(result == -EPIPE) {
+         snd_pcm_prepare(_pcm);
+      } else {
+        //
+        //
+      }
+   }  
+}
+
+internal void
+alsa_init(int samples_per_second, int samples_per_write) {
+   snd_pcm_hw_params_t* _pcm_hw_params;
+
+   if(snd_pcm_open(&_pcm, "default", SND_PCM_STREAM_PLAYBACK, SND_PCM_NONBLOCK) < 0) {
+      //TODO(LAG) Diagnostic
+   }
+
+   _pcm_hw_params = (snd_pcm_hw_params_t*)mmap(0,
+                                               snd_pcm_hw_params_sizeof(),
+                                               PROT_READ | PROT_WRITE,
+                                               MAP_PRIVATE | MAP_ANONYMOUS,
+                                               -1,
+                                               0);
+   snd_pcm_hw_params_any(_pcm, _pcm_hw_params);
+
+   snd_pcm_hw_params_set_access(_pcm, _pcm_hw_params, SND_PCM_ACCESS_RW_INTERLEAVED);
+   snd_pcm_hw_params_set_format(_pcm, _pcm_hw_params, SND_PCM_FORMAT_S16_LE);
+   snd_pcm_hw_params_set_channels(_pcm, _pcm_hw_params, 2);
+   snd_pcm_hw_params_set_rate(_pcm, _pcm_hw_params, samples_per_second, 0);
+   snd_pcm_hw_params_set_buffer_size(_pcm, _pcm_hw_params, samples_per_write);
+   snd_pcm_hw_params_set_period_time(_pcm, _pcm_hw_params, 100000, 0);
+
+   snd_pcm_hw_params(_pcm, _pcm_hw_params);
 }
 
 int 
@@ -176,14 +232,24 @@ main()
     linux_load_gamecode();
 
 
+
+
+
+    /*  ALSAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA  */
+
+    int samples_per_second = 48000;
+    int samples_per_write = 48000 / 15;
     i16 *s_memory = (i16*)mmap(0, 48000 * 4,
                         PROT_WRITE | PROT_READ, 
                         MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+    alsa_init(samples_per_second, samples_per_write);
 
 
     UntitledInput input[2] = {0};
     UntitledInput *new_input = &input[1];
     UntitledInput *old_input = &input[0];
+
+    
 
     struct timeval last_counter;
     gettimeofday(&last_counter, 0);
@@ -193,7 +259,7 @@ main()
     while(running) {
 
         struct stat temp_file_stat;
-        stat("linux_bin/untitled.so", &temp_file_stat);
+        stat("/home/vito/git/untitled-unmastered/linux_bin/untitled.so", &temp_file_stat);
 
         if(temp_file_stat.st_mtim.tv_sec != file_stat.st_mtim.tv_sec) {
             if(global_gamecode_dll) {
@@ -221,13 +287,28 @@ main()
         screen_buffer.width = 1280;
         screen_buffer.height = 720;
 
+
+        snd_pcm_sframes_t avail, delay;
+        snd_pcm_avail_delay(_pcm, &avail, &delay);
+        int samples_to_write = avail;
+        if(samples_to_write + delay > samples_per_write) {
+            samples_to_write = samples_per_write - delay;
+        }
+
         UntitledSoundBuffer sbf = {0};
         sbf.sample_out = s_memory;
+        sbf.samples_per_second = samples_per_second;
+        sbf.sample_count = samples_to_write;
 
-
-        if(untitled_update_game)
+        if(global_gamecode_dll) {
             untitled_update_game(&untitled_memory, &screen_buffer, &sbf, new_input);
+        } else {
+            linux_load_gamecode();
+        }
 
+        if(samples_to_write > 0) {
+            alsa_fill_sound_buffer(&sbf, samples_to_write);
+        }
         struct timeval work_counter = get_timeval();
 
         f32 work_seconds_elapsed = get_seconds_elapsed(last_counter, work_counter);
@@ -246,18 +327,51 @@ main()
 
         struct timeval end_counter = get_timeval();
 
-        f32 ms_per_frame = 1000.0f * get_seconds_elapsed(last_counter, end_counter);
-        f32 fps = (1000.0f) / ms_per_frame;
+        //f32 ms_per_frame = 1000.0f * get_seconds_elapsed(last_counter, end_counter);
+            //f32 fps = (1000.0f) / ms_per_frame;
 
 
-        printf("%.2f\n", fps);
+        //printf("%.2f\n", fps);
 
         XPutImage(display, window, defaultGC, x_img, 0, 0, 0, 0,
                   screen_buffer.width, screen_buffer.height);
         XFlush(display);
 
         last_counter = end_counter;
+
+        UntitledInput *tmp_input = old_input;
+        old_input = new_input;
+        new_input = tmp_input;
     }
 
     return 0;
 }
+
+/*
+ * 
+ *  static const char *
+    get_audio_device(int channels)
+    {
+        const char *device;
+
+        device = SDL_getenv("AUDIODEV"); 
+        if (device == NULL) {
+            switch (channels) {
+                case 6:
+                    device = "plug:surround51";
+                    break;
+                case 4:
+                    device = "plug:surround40";
+                    break;
+                default:
+                    device = "default";
+                    break;
+            }
+        }
+        return device;
+    }
+
+ *
+ *
+ *
+ * */

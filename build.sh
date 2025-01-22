@@ -13,11 +13,11 @@ fi
 
 
 if [ "$1" = "linux" ]; then
-    CC='gcc'
+    CC='clang'
     TARGET='src/linux_untitled.c'
-    BIN='./linux_bin/untitled_linux'
+    BIN='linux_bin/untitled_linux'
     LIBS='-lX11 -lasound -lm'
-    FLAGS='-Wall -Wextra -g'
+    FLAGS='-Wall -Wextra -g -O0 -Werror -fno-builtin'
     OPEN="./$BIN"
     
     echo "[compiling] : $CC -shared src/untitled.c -o linux_bin/untitled.s $FLAGS"

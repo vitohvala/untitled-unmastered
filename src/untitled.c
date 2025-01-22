@@ -27,14 +27,14 @@ untitled_update_sound_buffer(UntitledSoundBuffer *sound_buffer,
     int tone_volume = 9000;
     i16 *sample_out = sound_buffer->sample_out;
     int wave_period = sound_buffer->samples_per_second / state->tone_hz;
-    local_persist f32 tsine;
+    local_persist f32 tsine = 0;
 
     for(int i = 0; i < sound_buffer->sample_count; i++) {
         f32 sine_value = sinf(tsine);
         i16 value = (i16)(sine_value * tone_volume);
         *sample_out++ = value;
         *sample_out++ = value;
-        tsine += 2.0f * PI32 * (1.0f / (f32)wave_period);
+        tsine += 2.0f * PI32 * 1.0f / (f32)wave_period;
     }
 
 }

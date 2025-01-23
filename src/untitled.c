@@ -14,7 +14,7 @@ untitled_update_render(UntitledOffscreenBuffer *screen_buffer, UntitledState *st
             u8 Green = (u8)(y + state->yoffset);
             u8 Blue = (u8)(x + state->xoffset);
 
-            *Pixel++ = Green << 16 | Blue; 
+            *Pixel++ = Green << 16 | Blue << 8; 
         }
         Row += pitch;
     }   
@@ -24,7 +24,7 @@ internal void
 untitled_update_sound_buffer(UntitledSoundBuffer *sound_buffer, 
                              UntitledState *state)
 {
-    int tone_volume = 9000;
+    int tone_volume = 3000;
     i16 *sample_out = sound_buffer->sample_out;
     int wave_period = sound_buffer->samples_per_second / state->tone_hz;
     local_persist f32 tsine = 0;

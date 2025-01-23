@@ -9,7 +9,7 @@
 #define Terabytes(Value) (Gigabytes(Value) * 1024LL)
 
 
-#define untitled_assert(expression) if(!(expression)) { __builtin_trap(); }
+#define untitled_assert(expression) if(!(expression))  { *(int*) 0 = 0; }
 
 
 typedef struct Untiled_offscreen_buffer {

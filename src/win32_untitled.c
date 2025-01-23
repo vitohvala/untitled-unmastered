@@ -11,14 +11,16 @@
 
 
 #include "untitled.h"
+#include "untitled_types.h"
 
-#define DEBUG
 
-#ifdef DEBUG 
+#ifdef DEBUG_WINE 
     #include <stdlib.h>
     #include <stdio.h>
     #include <sys/stat.h>
     #include <time.h>
+
+    //global_var struct stat file_stat;
 #endif
 
 #include <windows.h>
@@ -79,9 +81,9 @@ typedef struct win32_dsound_output_s{
 global_var u8 running = 1;
 global_var Win32OffscreenBuffer global_backbuffer;
 global_var LARGE_INTEGER global_perf_count_freq; 
-global_var struct stat file_stat;
 global_var HMODULE global_gamecode_dll;
 global_var LPDIRECTSOUNDBUFFER sec_buffer;
+global_var FILETIME game_dll_last_write;
 
 
 internal void 
@@ -111,7 +113,7 @@ win32_buffer_to_window(Win32OffscreenBuffer *buff, HWND handle)
             0, 0, 
             SRCCOPY)) 
     {
-        printf("bitblt failed");
+        //printf("bitblt failed");
         exit(2);
     }
     ReleaseDC(handle, DeviceContext);
@@ -327,6 +329,7 @@ win32_win_proc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
     return DefWindowProc(hwnd, uMsg, wParam, lParam);
 }
 
+#ifdef DEBUG_WINE 
 u8 copy_file(char *filename1, char *filename2) {
 
     FILE *fp_out = fopen(filename1, "rb");
@@ -346,18 +349,34 @@ u8 copy_file(char *filename1, char *filename2) {
 
     return 1;
 }
+#endif
+
+inline FILETIME
+Win32GetFileLastWriteTime(char *FileName) {
+  FILETIME Result = {};
+  WIN32_FIND_DATA FindData;
+  HANDLE Handle = FindFirstFileA(FileName, &FindData);
+  if(Handle != INVALID_HANDLE_VALUE) {
+    Result = FindData.ftLastWriteTime;
+    FindClose(Handle);
+  }
+
+  return Result;
+}
+
 
 internal void 
 win32_load_gamecode(void)
 {
     //add this 
-    //CopyFileA("untitled.dll", "untitled_temp.dll", FALSE);
+    CopyFileA("build/untitled.dll", "build/untitled_temp.dll", FALSE);
 
-    stat("./bin/untitled.dll", &file_stat);
+    //stat("./build/untitled.dll", &file_stat);
+   game_dll_last_write = Win32GetFileLastWriteTime("build/untitled.dll"); 
 
-    copy_file("./bin/untitled.dll", "./bin/untitled_temp.dll");
+    //copy_file("./bin/untitled.dll", "./bin/untitled_temp.dll");
 
-    global_gamecode_dll = LoadLibraryA("untitled_temp.dll");
+    global_gamecode_dll = LoadLibraryA("build/untitled_temp.dll");
 
 
     if(global_gamecode_dll) {
@@ -540,7 +559,7 @@ WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
     sound_output.bytes_per_sample = 4;
     sound_output.buffer_size = 
         sound_output.samples_per_second * sound_output.bytes_per_sample;
-    sound_output.latency_sample_count = sound_output.samples_per_second / 20.0f;
+    sound_output.latency_sample_count = sound_output.samples_per_second / 20;
     sound_output.running_sample_index = 0; 
  
 i16 *sound_memory = (i16*)VirtualAlloc(0, sound_output.buffer_size, 
@@ -562,14 +581,14 @@ i16 *sound_memory = (i16*)VirtualAlloc(0, sound_output.buffer_size,
 
     int refreshHz = 60;
     int game_updateHz = refreshHz;
-    f32 target_seconds = 1.0 / (f32)game_updateHz;
+    f32 target_seconds = 1.0f / (f32)game_updateHz;
 
     UntitledMemory untitled_memory = {0};
     untitled_memory.permanent_storage_size = Megabytes(32);
     untitled_memory.transient_storage_size = Megabytes(128);
 
-    usize total_storage_size = untitled_memory.permanent_storage_size + 
-                           untitled_memory.transient_storage_size;
+    usize total_storage_size = (usize)untitled_memory.permanent_storage_size + 
+                               (usize)untitled_memory.transient_storage_size;
     
     untitled_memory.permanent_storage = VirtualAlloc(0, total_storage_size,
                                         MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
@@ -591,11 +610,13 @@ i16 *sound_memory = (i16*)VirtualAlloc(0, sound_output.buffer_size,
 
     while(running) {
         
-        struct stat temp_file_stat;
-        stat("./bin/untitled.dll", &temp_file_stat);
+        //struct stat temp_file_stat;
+        //stat("./build/untitled.dll", &temp_file_stat);
+
+        FILETIME tmp_dll_filetime =Win32GetFileLastWriteTime("build/untitled.dll");
 
     
-        if(temp_file_stat.st_mtime != file_stat.st_mtime) {
+        if((CompareFileTime(&tmp_dll_filetime, &game_dll_last_write)) != 0) {
             if(global_gamecode_dll) {
                 FreeLibrary(global_gamecode_dll);
                 global_gamecode_dll = 0;
@@ -660,8 +681,8 @@ i16 *sound_memory = (i16*)VirtualAlloc(0, sound_output.buffer_size,
         }
 
         DWORD play_cursor;
-        DWORD bytes_to_lock;
-        DWORD bytes_to_write;
+        DWORD bytes_to_lock = 0;
+        DWORD bytes_to_write = 0;
         DWORD write_cursor;
         u8 sound_valid = false;
         if(SUCCEEDED(sec_buffer->lpVtbl->GetCurrentPosition(sec_buffer, &play_cursor, 
@@ -671,8 +692,8 @@ i16 *sound_memory = (i16*)VirtualAlloc(0, sound_output.buffer_size,
                 (sound_output.running_sample_index * sound_output.bytes_per_sample) % 
                 sound_output.buffer_size;
             DWORD target = (play_cursor + 
-                    (sound_output.latency_sample_count * sound_output.bytes_per_sample)) % 
-                sound_output.buffer_size;
+                    (sound_output.latency_sample_count * sound_output.bytes_per_sample))      
+                % sound_output.buffer_size;
 
             if(bytes_to_lock > target) {
                 bytes_to_write = (sound_output.buffer_size - bytes_to_lock) + target;

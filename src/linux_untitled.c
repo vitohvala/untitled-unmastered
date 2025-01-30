@@ -1,3 +1,15 @@
+/*
+ * TODO:
+ *      Opengl
+ *      FileIO
+ *      Joystick input
+ *
+ *
+ * */
+
+
+
+#include <X11/X.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <sys/mman.h>
@@ -8,6 +20,7 @@
 #include <time.h>
 #include <sys/time.h>
 #include <alsa/asoundlib.h>
+#include <linux/joystick.h>
 #include <math.h>
 
 #include "untitled.h"
@@ -17,6 +30,7 @@
 global_var UntitledUpdateP *untitled_update_game;
 global_var struct stat file_stat;
 global_var void *global_gamecode_dll;
+global_var snd_pcm_t* _pcm;
 
 internal void
 linux_set_size_hint(Display* display, Window window,
@@ -36,7 +50,7 @@ linux_set_size_hint(Display* display, Window window,
 }
 
 internal u8
-copy_file(char *filename1, char *filename2)
+linux_copy_file(char *filename1, char *filename2)
 {
 
     FILE *fp_out = fopen(filename1, "rb");
@@ -65,9 +79,9 @@ linux_load_gamecode(void)
     }
 
 
-    if(!(copy_file("/home/vito/git/untitled-unmastered/linux_bin/untitled.so", 
+    if(!(linux_copy_file("/home/vito/git/untitled-unmastered/linux_bin/untitled.so", 
                     "/home/vito/git/untitled-unmastered/linux_bin/untitled_temp.so"))) {
-        copy_file("untitled.so", "untitled_temp.so");
+        linux_copy_file("untitled.so", "untitled_temp.so");
     }
 
     global_gamecode_dll = dlopen("/home/vito/git/untitled-unmastered/linux_bin/untitled_temp.so", RTLD_NOW);
@@ -83,7 +97,7 @@ linux_load_gamecode(void)
 }
 
 internal struct timeval
-get_timeval(void) 
+linux_get_timeval(void) 
 {
     struct timeval tv;
     gettimeofday(&tv, 0);
@@ -91,64 +105,72 @@ get_timeval(void)
 }
 
 internal f32
-get_seconds_elapsed(struct timeval tv_start, struct timeval tv_end) 
+linux_get_seconds_elapsed(struct timeval tv_start, struct timeval tv_end) 
 {
     return (f32)(((tv_end.tv_sec * 1000000) + tv_end.tv_usec) -
             ((tv_start.tv_sec * 1000000) + tv_start.tv_usec)) / (1000.0f*1000.0f);
 }
 
 
-void msleep(u32 milliseconds)  
+internal void 
+linux_msleep(u32 milliseconds)  
 {
-  int ms_remaining = (milliseconds) % 1000;
-  long usec = ms_remaining * 1000;
-  struct timespec ts_sleep;
+    int ms_remaining = (milliseconds) % 1000;
+    long usec = ms_remaining * 1000;
+    struct timespec ts_sleep;
 
-  ts_sleep.tv_sec = (milliseconds) / 1000;
-  ts_sleep.tv_nsec = 1000*usec;
-  nanosleep(&ts_sleep, NULL);
+    ts_sleep.tv_sec = (milliseconds) / 1000;
+    ts_sleep.tv_nsec = 1000*usec;
+    nanosleep(&ts_sleep, NULL);
 }
 
-global_var snd_pcm_t* _pcm;
 
 internal void
 alsa_fill_sound_buffer(UntitledSoundBuffer* sound_output, int samples_to_write) {
 
-   int result;
-   while((result = snd_pcm_writei(_pcm, sound_output->sample_out, samples_to_write)) != samples_to_write) {
-      if(result == -EPIPE) {
-         snd_pcm_prepare(_pcm);
-      } else {
-        //
-        //
-      }
-   }  
+    int result;
+    while((result = snd_pcm_writei(_pcm, sound_output->sample_out, samples_to_write)) != samples_to_write) {
+        if(result == -EPIPE) {
+            snd_pcm_prepare(_pcm);
+        } else {
+            //
+            //
+        }
+    }  
 }
 
 internal void
 alsa_init(int samples_per_second, int samples_per_write) {
-   snd_pcm_hw_params_t* _pcm_hw_params;
+    snd_pcm_hw_params_t* _pcm_hw_params;
 
-   if(snd_pcm_open(&_pcm, "default", SND_PCM_STREAM_PLAYBACK, SND_PCM_NONBLOCK) < 0) {
-      //TODO(LAG) Diagnostic
-   }
+    if(snd_pcm_open(&_pcm, "default", SND_PCM_STREAM_PLAYBACK, SND_PCM_NONBLOCK) < 0) {
+        //TODO(LAG) Diagnostic
+    }
 
-   _pcm_hw_params = (snd_pcm_hw_params_t*)mmap(0,
-                                               snd_pcm_hw_params_sizeof(),
-                                               PROT_READ | PROT_WRITE,
-                                               MAP_PRIVATE | MAP_ANONYMOUS,
-                                               -1,
-                                               0);
-   snd_pcm_hw_params_any(_pcm, _pcm_hw_params);
+    _pcm_hw_params = (snd_pcm_hw_params_t*)mmap(0,
+            snd_pcm_hw_params_sizeof(),
+            PROT_READ | PROT_WRITE,
+            MAP_PRIVATE | MAP_ANONYMOUS,
+            -1,
+            0);
+    snd_pcm_hw_params_any(_pcm, _pcm_hw_params);
 
-   snd_pcm_hw_params_set_access(_pcm, _pcm_hw_params, SND_PCM_ACCESS_RW_INTERLEAVED);
-   snd_pcm_hw_params_set_format(_pcm, _pcm_hw_params, SND_PCM_FORMAT_S16_LE);
-   snd_pcm_hw_params_set_channels(_pcm, _pcm_hw_params, 2);
-   snd_pcm_hw_params_set_rate(_pcm, _pcm_hw_params, samples_per_second, 0);
-   snd_pcm_hw_params_set_buffer_size(_pcm, _pcm_hw_params, samples_per_write);
-   snd_pcm_hw_params_set_period_time(_pcm, _pcm_hw_params, 100000, 0);
+    snd_pcm_hw_params_set_access(_pcm, _pcm_hw_params, SND_PCM_ACCESS_RW_INTERLEAVED);
+    snd_pcm_hw_params_set_format(_pcm, _pcm_hw_params, SND_PCM_FORMAT_S16_LE);
+    snd_pcm_hw_params_set_channels(_pcm, _pcm_hw_params, 2);
+    snd_pcm_hw_params_set_rate(_pcm, _pcm_hw_params, samples_per_second, 0);
+    snd_pcm_hw_params_set_buffer_size(_pcm, _pcm_hw_params, samples_per_write);
+    snd_pcm_hw_params_set_period_time(_pcm, _pcm_hw_params, 100000, 0);
 
-   snd_pcm_hw_params(_pcm, _pcm_hw_params);
+    snd_pcm_hw_params(_pcm, _pcm_hw_params);
+}
+
+void
+linux_process_keyboard_message(UntitledButtonState *new_state, u32 is_down) 
+{
+    untitled_assert(is_down != new_state->ended_down);
+    new_state->ended_down = is_down;
+    ++new_state->half_transition_count;
 }
 
 int 
@@ -231,10 +253,6 @@ main()
     f32 target_seconds = 1.0f / (f32)game_updateHz;
     linux_load_gamecode();
 
-
-
-
-
     /*  ALSAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA  */
 
     int samples_per_second = 48000;
@@ -254,7 +272,6 @@ main()
     struct timeval last_counter;
     gettimeofday(&last_counter, 0);
 
-    
 
     while(running) {
 
@@ -270,12 +287,74 @@ main()
             linux_load_gamecode();
         }
 
+        UntitledControllerInput *new_keyboard = &new_input->cinput[0];
+        UntitledControllerInput *old_keyboard = &old_input->cinput[0];
+        UntitledControllerInput zero_controller = {0};
+        *new_keyboard = zero_controller;
+
+        for(int i = 0; i < (int)ArrayCount(new_keyboard->buttons); ++i) {
+            new_keyboard->buttons[i].ended_down = old_keyboard->buttons[i].ended_down;
+        }
+
         while(XPending(display) > 0){
             XNextEvent(display, &event);
             switch (event.type) {
                 case ClientMessage: 
                 {
                     if((Atom)event.xclient.data.l[0] == WM_DELETE_WINDOW) {
+                        running = false;
+                    }
+                } break;
+
+                case KeyPress:
+                case KeyRelease:
+                {
+                    KeySym key = XLookupKeysym(&event.xkey, 0);
+                    i32 is_down = (event.type == KeyPress);
+                    //int was_down = (event.type == KeyRelease);
+                    int alt_pressed = (event.xkey.state & (Mod1Mask | Mod5Mask));
+
+
+                    switch (key) {
+                        case XK_A:
+                        case XK_a:
+                        case XK_Left:
+                        {
+                            linux_process_keyboard_message(&new_keyboard->left, is_down);
+                        } break;
+                        case XK_D:
+                        case XK_d:
+                        case XK_Right:
+                        {
+                            linux_process_keyboard_message(&new_keyboard->right, is_down);
+                        } break;
+                        case XK_S:
+                        case XK_s:
+                        case XK_Down:
+                        {
+                            linux_process_keyboard_message(&new_keyboard->down, is_down);
+                        } break;
+                        case XK_W:
+                        case XK_w:
+                        case XK_Up:
+                        {
+                            linux_process_keyboard_message(&new_keyboard->up, is_down);
+                        } break;
+                        case XK_E:
+                        case XK_e:
+                        {
+                            linux_process_keyboard_message(&new_keyboard->right_shoulder, 
+                                                            is_down);
+                        } break;
+                        case XK_Q:
+                        case XK_q:
+                        {
+                            linux_process_keyboard_message(&new_keyboard->left_shoulder, 
+                                                            is_down);
+                        } break;
+                    }
+
+                    if (alt_pressed && key == XK_F4) {
                         running = false;
                     }
                 } break;
@@ -309,23 +388,24 @@ main()
         if(samples_to_write > 0) {
             alsa_fill_sound_buffer(&sbf, samples_to_write);
         }
-        struct timeval work_counter = get_timeval();
+        struct timeval work_counter = linux_get_timeval();
 
-        f32 work_seconds_elapsed = get_seconds_elapsed(last_counter, work_counter);
+        f32 work_seconds_elapsed = linux_get_seconds_elapsed(last_counter, work_counter);
         f32 seconds_elapsed_for_frame = work_seconds_elapsed;
 
         while(seconds_elapsed_for_frame < target_seconds) {
             //Note(LAG) Due to granularity, it cannot hit the right amount of sleep time so we make it sleep for a little less time than what it should and the loop handle the rest
             u32 sleep_ms = (i32)(1000.0f * (target_seconds - seconds_elapsed_for_frame));
             if(sleep_ms > 0) {
-                msleep(sleep_ms);
+                linux_msleep(sleep_ms);
             }
 
-            seconds_elapsed_for_frame = get_seconds_elapsed(last_counter, get_timeval());
+            seconds_elapsed_for_frame = linux_get_seconds_elapsed(last_counter,
+                                                                  linux_get_timeval());
      
         }
 
-        struct timeval end_counter = get_timeval();
+        struct timeval end_counter = linux_get_timeval();
 
         //f32 ms_per_frame = 1000.0f * get_seconds_elapsed(last_counter, end_counter);
             //f32 fps = (1000.0f) / ms_per_frame;
@@ -343,35 +423,7 @@ main()
         old_input = new_input;
         new_input = tmp_input;
     }
-
+    munmap(untitled_memory.permanent_storage, total_memsize);
+    XCloseDisplay(display);
     return 0;
 }
-
-/*
- * 
- *  static const char *
-    get_audio_device(int channels)
-    {
-        const char *device;
-
-        device = SDL_getenv("AUDIODEV"); 
-        if (device == NULL) {
-            switch (channels) {
-                case 6:
-                    device = "plug:surround51";
-                    break;
-                case 4:
-                    device = "plug:surround40";
-                    break;
-                default:
-                    device = "default";
-                    break;
-            }
-        }
-        return device;
-    }
-
- *
- *
- *
- * */

@@ -1,23 +1,17 @@
 #!/bin/bash
 
-
-if [ ! -d "bin" ]; then
-    echo "[CMD] : mkdir bin"
-    mkdir bin
-fi
-
-if [ ! -d "linux_bin" ]; then
-    echo "[CMD] : mkdir linux_bin"
-    mkdir linux_bin
-fi
-
-
 if [ "$1" = "linux" ]; then
+
+    if [ ! -d "linux_bin" ]; then
+        echo "[CMD] : mkdir linux_bin"
+        mkdir linux_bin
+    fi
+
     CC='clang'
     TARGET='src/linux_untitled.c'
     BIN='linux_bin/untitled_linux'
     LIBS='-lX11 -lasound -lm'
-    FLAGS='-Wall -Wextra -g -O0 -Werror -fno-builtin'
+    FLAGS='-DCLANG_DEBUG -Wall -Wextra -Werror -g -O0 -fno-builtin -Wno-unused-function'
     OPEN="./$BIN"
     
     echo "[compiling] : $CC -shared src/untitled.c -o linux_bin/untitled.s $FLAGS"
@@ -30,7 +24,12 @@ if [ "$1" = "linux" ]; then
         $OPEN
     fi
 
-elif [ 1 ]; then
+else 
+    if [ ! -d "bin" ]; then
+        echo "[CMD] : mkdir bin"
+        mkdir bin
+    fi
+    
     CC='x86_64-w64-mingw32-gcc' 
     TARGET='src/win32_untitled.c' 
     BIN='bin/untitled.exe'

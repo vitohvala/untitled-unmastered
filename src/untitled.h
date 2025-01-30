@@ -8,9 +8,13 @@
 #define Gigabytes(Value) (Megabytes(Value) * 1024LL)
 #define Terabytes(Value) (Gigabytes(Value) * 1024LL)
 
-
-#define untitled_assert(expression) if(!(expression))  { *(int*) 0 = 0; }
-
+#if CLANG_DEBUG
+    #define untitled_assert(expression) if(!(expression))  { __builtin_trap(); }
+#else 
+    #define untitled_assert(expression) if(!(expression))  { *(int*) 0 = 0; }
+#endif
+#define BYTES_PER_PIXEL 4
+#define ArrayCount(x) (sizeof(x) / sizeof((x)[0]))
 
 typedef struct Untiled_offscreen_buffer {
     void *memory;
@@ -23,6 +27,11 @@ typedef struct {
     i16 *sample_out;
     int sample_count;
 } UntitledSoundBuffer;
+
+typedef struct {
+    f32 x, y;
+    f32 w, h;
+} RectangleF32;
 
 typedef struct {
     int xoffset;  
@@ -43,19 +52,19 @@ typedef struct {
 typedef struct {
     i32 half_transition_count;
     u32 ended_down;
-}UntiledButtonState ;
+}UntitledButtonState ;
 
 typedef struct {
 
     union {
-        UntiledButtonState buttons[6];
+        UntitledButtonState buttons[6];
         struct {
-            UntiledButtonState up;
-            UntiledButtonState down;
-            UntiledButtonState right;
-            UntiledButtonState left;
-            UntiledButtonState left_shoulder;
-            UntiledButtonState right_shoulder;
+            UntitledButtonState up;
+            UntitledButtonState down;
+            UntitledButtonState right;
+            UntitledButtonState left;
+            UntitledButtonState left_shoulder;
+            UntitledButtonState right_shoulder;
         };
     };
 

@@ -5,7 +5,8 @@
  * TODO: 
  *      FILE_IO
  *      OPENGL
- *
+ *      USE XAUDIO2 instead
+ *      
  * */
 
 
@@ -14,21 +15,11 @@
 #include "untitled_types.h"
 
 
-#ifdef DEBUG_WINE 
-    #include <stdlib.h>
-    #include <stdio.h>
-    #include <sys/stat.h>
-    #include <time.h>
-
-    //global_var struct stat file_stat;
-#endif
-
 #include <windows.h>
 #include <xinput.h>
 #include <dsound.h>
 
 
-#define ArrayCount(x) (sizeof(x) / sizeof((x)[0]))
 
 #define XINPUT_GET_STATE(name) DWORD WINAPI name(DWORD dwUserIndex, XINPUT_STATE *pstate)
 #define XINPUT_SET_STATE(name) \
@@ -329,39 +320,18 @@ win32_win_proc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
     return DefWindowProc(hwnd, uMsg, wParam, lParam);
 }
 
-#ifdef DEBUG_WINE 
-u8 copy_file(char *filename1, char *filename2) {
 
-    FILE *fp_out = fopen(filename1, "rb");
-    FILE *fp_in = fopen(filename2, "wb");
-
-    if(!fp_out || !fp_in) return 0;
-
-    char buffer[4096];
-    size_t bytes;
-    
-    while ((bytes = fread(buffer, 1, sizeof(buffer), fp_out)) > 0) {
-        fwrite(buffer, 1, bytes, fp_in);
+static inline FILETIME
+win32_get_file_last_writetime(char *FileName) {
+    FILETIME Result = {};
+    WIN32_FIND_DATA FindData;
+    HANDLE Handle = FindFirstFileA(FileName, &FindData);
+    if(Handle != INVALID_HANDLE_VALUE) {
+        Result = FindData.ftLastWriteTime;
+        FindClose(Handle);
     }
 
-    fclose(fp_in);
-    fclose(fp_out);
-
-    return 1;
-}
-#endif
-
-inline FILETIME
-Win32GetFileLastWriteTime(char *FileName) {
-  FILETIME Result = {};
-  WIN32_FIND_DATA FindData;
-  HANDLE Handle = FindFirstFileA(FileName, &FindData);
-  if(Handle != INVALID_HANDLE_VALUE) {
-    Result = FindData.ftLastWriteTime;
-    FindClose(Handle);
-  }
-
-  return Result;
+    return Result;
 }
 
 
@@ -369,14 +339,14 @@ internal void
 win32_load_gamecode(void)
 {
     //add this 
-    CopyFileA("build/untitled.dll", "build/untitled_temp.dll", FALSE);
+    CopyFileA("bin/untitled.dll", "bin/untitled_temp.dll", FALSE);
 
-    //stat("./build/untitled.dll", &file_stat);
-   game_dll_last_write = Win32GetFileLastWriteTime("build/untitled.dll"); 
+    //stat("./bin/untitled.dll", &file_stat);
+    game_dll_last_write = win32_get_file_last_writetime("bin/untitled.dll"); 
 
     //copy_file("./bin/untitled.dll", "./bin/untitled_temp.dll");
 
-    global_gamecode_dll = LoadLibraryA("build/untitled_temp.dll");
+    global_gamecode_dll = LoadLibraryA("bin/untitled_temp.dll");
 
 
     if(global_gamecode_dll) {
@@ -405,8 +375,8 @@ win32_get_seconds_elapsed(LARGE_INTEGER start, LARGE_INTEGER end)
 
 internal void 
 win32_process_XInput_digital(DWORD XInput_button_state, 
-                             UntiledButtonState *old_state, DWORD button_bit,
-                             UntiledButtonState *new_state)
+                             UntitledButtonState *old_state, DWORD button_bit,
+                             UntitledButtonState *new_state)
 {
     new_state->ended_down = ((XInput_button_state & button_bit) == button_bit);
     new_state->half_transition_count =
@@ -414,7 +384,7 @@ win32_process_XInput_digital(DWORD XInput_button_state,
 }
 
 internal void
-win32_process_keyboard_message(UntiledButtonState *new_state, u32 is_down)
+win32_process_keyboard_message(UntitledButtonState *new_state, u32 is_down)
 {
     untitled_assert(is_down != new_state->ended_down);
     new_state->ended_down = is_down;
@@ -422,7 +392,7 @@ win32_process_keyboard_message(UntiledButtonState *new_state, u32 is_down)
 }
 
 internal void 
-win32_procces_message(UntitledControllerInput *keyboard)
+win32_process_message(UntitledControllerInput *keyboard)
 {
     MSG msg = {};
     while(PeekMessageA(&msg, 0, 0, 0, PM_REMOVE)) {
@@ -457,11 +427,11 @@ win32_procces_message(UntitledControllerInput *keyboard)
                         } break;
                         case 'E': 
                         {
-                            win32_process_keyboard_message(&keyboard->left_shoulder, is_down); 
+                            win32_process_keyboard_message(&keyboard->right_shoulder, is_down); 
                         } break;
                         case 'Q': 
                         {
-                            win32_process_keyboard_message(&keyboard->right_shoulder, is_down);
+                            win32_process_keyboard_message(&keyboard->left_shoulder, is_down);
                         } break;
                         case VK_UP:
                         {
@@ -610,10 +580,7 @@ i16 *sound_memory = (i16*)VirtualAlloc(0, sound_output.buffer_size,
 
     while(running) {
         
-        //struct stat temp_file_stat;
-        //stat("./build/untitled.dll", &temp_file_stat);
-
-        FILETIME tmp_dll_filetime =Win32GetFileLastWriteTime("build/untitled.dll");
+        FILETIME tmp_dll_filetime = win32_get_file_last_writetime("bin/untitled.dll");
 
     
         if((CompareFileTime(&tmp_dll_filetime, &game_dll_last_write)) != 0) {
@@ -634,7 +601,7 @@ i16 *sound_memory = (i16*)VirtualAlloc(0, sound_output.buffer_size,
             new_keyboard->buttons[i].ended_down = old_keyboard->buttons[i].ended_down;
         }
 
-        win32_procces_message(new_keyboard);
+        win32_process_message(new_keyboard);
         
         int max_controller_count = XUSER_MAX_COUNT; 
         if(max_controller_count > (int)(ArrayCount(new_input->cinput) - 1))

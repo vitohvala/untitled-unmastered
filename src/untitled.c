@@ -14,10 +14,40 @@ untitled_update_render(UntitledOffscreenBuffer *screen_buffer, UntitledState *st
             u8 Green = (u8)(y + state->yoffset);
             u8 Blue = (u8)(x + state->xoffset);
 
-            *Pixel++ = Green << 16 | Blue << 8; 
+            *Pixel++ = Green << 16 | Blue; 
         }
         Row += pitch;
     }   
+}
+
+internal void 
+draw_rectangle(UntitledOffscreenBuffer *screen_buffer, RectangleF32 *rect,
+                        f32 r, f32 g, f32 b) 
+{
+    u32 color = (u32)(r * 255.0f) << 16 |
+                (u32)(g * 255.0f) << 8 | 
+                (u32)(b * 255.0f) << 0;
+
+    u32 minX = (u32)rect->x;
+    u32 minY = (u32)rect->y;
+    u32 maxX = (u32)rect->w;
+    u32 maxY = (u32)rect->h;
+
+    if(minX < 0) minX = 0;
+    if(minY < 0) minY = 0;
+    if((int)maxX > screen_buffer->width) maxX = screen_buffer->width;
+    if((int)maxY > screen_buffer->height) maxY = screen_buffer->height;
+    
+    int pitch = screen_buffer->width * BYTES_PER_PIXEL;
+
+    u8 *Row = ((u8 *)screen_buffer->memory + minX * BYTES_PER_PIXEL + minY * pitch);
+    for (u32 y = minY; y < maxY; ++y) {
+        u32 *Pixel = (u32 *)Row;
+        for(u32 x = minX; x < maxX; ++x){
+            *Pixel++ = color; 
+        }
+        Row += pitch;
+    }  
 }
 
 internal void 
@@ -67,11 +97,17 @@ UNTITLED_UPDATE(untitled_update_game)
     if(input0.up.ended_down) {
         game_state->yoffset -= delta;
     }
-    if(game_state->yoffset <= 1000 && game_state->yoffset >= -1000) {
-        int tmp = (int)(((f32)game_state->yoffset / 1000) * 256) + 512;
-        game_state->tone_hz = tmp;
-    }
 
-    untitled_update_render(screen_buffer, game_state);
+    draw_rectangle(screen_buffer, 
+            &(RectangleF32){.x = 0.0f, .y = 0.0f, 
+                            .w = screen_buffer->width, .h = screen_buffer->height},
+            1.0f, 0.0f, 0.0f);
+    
+    draw_rectangle(screen_buffer, 
+            &(RectangleF32){.x = game_state->xoffset, .y = 10.0f, 
+            .w = game_state->xoffset + 50.0f, .h = 50.0f},
+            0.5f, 0.7f, 0.0f);
+    
+    //untitled_update_render(screen_buffer, game_state);
     untitled_update_sound_buffer(sound_buffer, game_state); 
 }

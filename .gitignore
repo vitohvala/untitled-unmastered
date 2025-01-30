@@ -1,3 +1,5 @@
 build
 bin
 linux_bin
+.vs
+.clangd

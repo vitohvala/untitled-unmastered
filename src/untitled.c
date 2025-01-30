@@ -100,12 +100,12 @@ UNTITLED_UPDATE(untitled_update_game)
 
     draw_rectangle(screen_buffer, 
             &(RectangleF32){.x = 0.0f, .y = 0.0f, 
-                            .w = screen_buffer->width, .h = screen_buffer->height},
+                            .w = (f32)screen_buffer->width, .h = (f32)screen_buffer->height},
             1.0f, 0.0f, 0.0f);
     
     draw_rectangle(screen_buffer, 
-            &(RectangleF32){.x = game_state->xoffset, .y = 10.0f, 
-            .w = game_state->xoffset + 50.0f, .h = 50.0f},
+            &(RectangleF32){.x = (f32)game_state->xoffset, .y = 10.0f, 
+            .w = (f32)game_state->xoffset + 50.0f, .h = 50.0f},
             0.5f, 0.7f, 0.0f);
     
     //untitled_update_render(screen_buffer, game_state);

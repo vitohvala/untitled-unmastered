@@ -9,7 +9,7 @@ CompileFlags:
    - "-D_WIN32"
    - "-DWIN32"
    - "--target=i686-pc-windows-gnu"
-   - "-I/usr/i686-w64-mingw32/include"
+   - "-I/usr/i686-w64-mingw32/include""
 ---
 If:
  PathMatch: .*linux.*\.c$

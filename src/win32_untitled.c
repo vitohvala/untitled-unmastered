@@ -15,7 +15,6 @@
 #include "untitled_types.h"
 
 
-#include <debugapi.h>
 #include <windows.h>
 #include <xinput.h>
 #include <dsound.h>
@@ -324,7 +323,7 @@ win32_win_proc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 static inline FILETIME
 win32_get_file_last_writetime(char *FileName) {
-    FILETIME Result = {};
+    FILETIME Result = {0};
     WIN32_FIND_DATA FindData;
     HANDLE Handle = FindFirstFileA(FileName, &FindData);
     if(Handle != INVALID_HANDLE_VALUE) {
@@ -337,17 +336,13 @@ win32_get_file_last_writetime(char *FileName) {
 
 
 internal void 
-win32_load_gamecode(void)
+win32_load_gamecode(char *dll_path, char *dll_tmp_path)
 {
-    //add this 
-    CopyFileA("bin/untitled.dll", "bin/untitled_temp.dll", FALSE);
+    CopyFileA(dll_path, dll_tmp_path, FALSE);
 
-    //stat("./bin/untitled.dll", &file_stat);
-    game_dll_last_write = win32_get_file_last_writetime("bin/untitled.dll"); 
+    game_dll_last_write = win32_get_file_last_writetime(dll_path);
 
-    //copy_file("./bin/untitled.dll", "./bin/untitled_temp.dll");
-
-    global_gamecode_dll = LoadLibraryA("bin/untitled_temp.dll");
+    global_gamecode_dll = LoadLibraryA(dll_tmp_path);
 
 
     if(global_gamecode_dll) {
@@ -533,14 +528,35 @@ WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
     sound_output.latency_sample_count = sound_output.samples_per_second / 20;
     sound_output.running_sample_index = 0; 
  
-i16 *sound_memory = (i16*)VirtualAlloc(0, sound_output.buffer_size, 
+    i16 *sound_memory = (i16*)VirtualAlloc(0, sound_output.buffer_size, 
                         MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);   
 
     win32_load_dsound(handle, sound_output.samples_per_second, sound_output.buffer_size);
     win32_clear_sound_buffer(&sound_output);
     sec_buffer->lpVtbl->Play(sec_buffer, 0, 0, DSBPLAY_LOOPING);
 
-    win32_load_gamecode();
+    char EXE_path[MAX_PATH];
+    DWORD filename_size = GetModuleFileNameA(NULL, EXE_path, sizeof(EXE_path));
+    char *OnePastLastSlash = EXE_path;
+    for(char *scan = EXE_path + filename_size; ; --scan) {
+        if(*scan == '\\') {
+            OnePastLastSlash = scan + 1;
+            break;
+        }
+    }
+    usize EXEDirLength = OnePastLastSlash - EXE_path;
+
+    char GameDLLName[] = "untitled.dll";
+    char GameDLLPath[MAX_PATH];
+    strncpy_s(GameDLLPath, sizeof(GameDLLPath), EXE_path, EXEDirLength);
+    strncpy_s(GameDLLPath + EXEDirLength, sizeof(GameDLLPath) - EXEDirLength, GameDLLName, sizeof(GameDLLName));
+
+    char GameTempDLLName[] = "untitled_temp.dll";
+    char GameTempDLLPath[MAX_PATH];
+    strncpy_s(GameTempDLLPath, sizeof(GameTempDLLPath), EXE_path, EXEDirLength);
+    strncpy_s(GameTempDLLPath + EXEDirLength, sizeof(GameTempDLLPath) - EXEDirLength, GameTempDLLName, sizeof(GameTempDLLName));
+
+    win32_load_gamecode(GameDLLPath, GameTempDLLPath);
 
     LARGE_INTEGER last_counter;
     QueryPerformanceFrequency(&global_perf_count_freq);
@@ -583,8 +599,7 @@ i16 *sound_memory = (i16*)VirtualAlloc(0, sound_output.buffer_size,
 
     while(running) {
         
-        FILETIME tmp_dll_filetime = win32_get_file_last_writetime("bin/untitled.dll");
-
+        FILETIME tmp_dll_filetime = win32_get_file_last_writetime(GameDLLPath);
     
         if((CompareFileTime(&tmp_dll_filetime, &game_dll_last_write)) != 0) {
             if(global_gamecode_dll) {
@@ -592,7 +607,7 @@ i16 *sound_memory = (i16*)VirtualAlloc(0, sound_output.buffer_size,
                 global_gamecode_dll = 0;
                 untitled_update_game = NULL;
             }
-            win32_load_gamecode();
+            win32_load_gamecode(GameDLLPath, GameTempDLLPath);
         }
 
         UntitledControllerInput *new_keyboard = &new_input->cinput[0];
@@ -688,7 +703,7 @@ i16 *sound_memory = (i16*)VirtualAlloc(0, sound_output.buffer_size,
             untitled_update_game(&untitled_memory, &untitled_screen_buffer, &sbf, new_input);
         }
         else 
-            win32_load_gamecode();
+            win32_load_gamecode(GameDLLPath, GameTempDLLPath);
 
 
         if(sound_valid)
@@ -724,9 +739,12 @@ i16 *sound_memory = (i16*)VirtualAlloc(0, sound_output.buffer_size,
     
         end_counter = win32_get_wall_clock();
         f32 ms_per_seconds = 1000.0f * win32_get_seconds_elapsed(last_counter, end_counter);
-
-        printf("%f\n", ms_per_seconds);
         
+        char buffer[100];
+        sprintf_s(buffer, 100, "%f\n", ms_per_seconds);
+        
+        OutputDebugStringA(buffer);
+
         last_counter = end_counter;
 
         UntitledInput *tmp_input = old_input;

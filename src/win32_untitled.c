@@ -15,10 +15,11 @@
 #include "untitled_types.h"
 
 
+#include <debugapi.h>
 #include <windows.h>
 #include <xinput.h>
 #include <dsound.h>
-
+#include <stdio.h>
 
 
 #define XINPUT_GET_STATE(name) DWORD WINAPI name(DWORD dwUserIndex, XINPUT_STATE *pstate)
@@ -553,6 +554,8 @@ i16 *sound_memory = (i16*)VirtualAlloc(0, sound_output.buffer_size,
     int game_updateHz = refreshHz;
     f32 target_seconds = 1.0f / (f32)game_updateHz;
 
+    printf("%f\n", target_seconds);
+
     UntitledMemory untitled_memory = {0};
     untitled_memory.permanent_storage_size = Megabytes(32);
     untitled_memory.transient_storage_size = Megabytes(128);
@@ -697,19 +700,34 @@ i16 *sound_memory = (i16*)VirtualAlloc(0, sound_output.buffer_size,
         
         f32 seconds_elapsed_fframe = seconds_elapsed;
 
-        while(seconds_elapsed_fframe < target_seconds) {
+        if(seconds_elapsed_fframe < target_seconds) {
             if(sleep_is_granular) {
                 DWORD sleep_ms = (DWORD)(1000.0f * (target_seconds - seconds_elapsed_fframe));
-                if(sleep_ms > 0)
+                if(sleep_ms > 0) {
                     Sleep(sleep_ms);
+                }
             }
-            seconds_elapsed_fframe = win32_get_seconds_elapsed(last_counter, 
+            f32 TestSecondsElapsedForFrame = win32_get_seconds_elapsed(last_counter, 
                     win32_get_wall_clock());
+            if(TestSecondsElapsedForFrame < target_seconds)
+            {
+                // TODO(casey): LOG MISSED SLEEP HERE
+            }
+
+            while(seconds_elapsed_fframe < target_seconds) {
+                seconds_elapsed_fframe = win32_get_seconds_elapsed(last_counter, 
+                        win32_get_wall_clock());
+            }
         }
-
+        
         win32_buffer_to_window(&global_backbuffer, handle);
+    
+        end_counter = win32_get_wall_clock();
+        f32 ms_per_seconds = 1000.0f * win32_get_seconds_elapsed(last_counter, end_counter);
 
-        last_counter = win32_get_wall_clock();
+        printf("%f\n", ms_per_seconds);
+        
+        last_counter = end_counter;
 
         UntitledInput *tmp_input = old_input;
         old_input = new_input;
